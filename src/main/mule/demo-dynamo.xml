@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:dynamodb="http://www.mulesoft.org/schema/mule/dynamodb"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/dynamodb http://www.mulesoft.org/schema/mule/dynamodb/current/mule-dynamodb.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="57d4f6f5-a7ae-4f63-ada4-5832ef01abee" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<dynamodb:config name="Amazon_DynamoDB_Configuration" doc:name="Amazon DynamoDB Configuration" doc:id="459d9563-a06a-45ed-9d70-5ddff09f2b36" >
+		<dynamodb:basic-connection accessKey="${dynamo.access.key}" secretKey="${dynamo.secret.key}"/>
+	</dynamodb:config>
+	<configuration-properties doc:name="Configuration properties" doc:id="5b468cbf-70f0-4376-8fc6-a5403cc40d55" file="local.properties" />
+	<flow name="demo-dynamo-query" doc:id="c40d7258-7ad7-4a22-9e6d-9900588ea0c6" >
+		<http:listener doc:name="Listener" doc:id="e9477ccb-3e7d-4510-8bfe-14a4f8880895" config-ref="HTTP_Listener_config" path="/v1/dynamo/{id}"/>
+		<set-variable value='#[attributes."uriParams".id]' doc:name="Set id" doc:id="dcc1e8a6-35ca-45a9-9a11-30af6e5b6c4a" variableName="id"/>
+		<dynamodb:query doc:name="get Student by Id" doc:id="975937e0-14e1-4044-8f9d-bb0fd2a615ee" config-ref="Amazon_DynamoDB_Configuration" keyConditionExpression="#id = :idValue" tableName="${dynamo.db}" attributeValues='#[{":idValue": {"S":vars.id}}]' attributeNames='#["#id":"id"]' select="ALL_ATTRIBUTES">
+		</dynamodb:query>
+		<ee:transform doc:name="dynamo response" doc:id="73210bca-209c-4c8d-b11e-b38645ea2679" >
+			<ee:message >
+				<ee:set-payload resource="dwl/get-studentById-dynamoResponse.dwl" />
+			</ee:message>
+		</ee:transform>
+		<ee:transform doc:name="final response" doc:id="589b5f38-74cc-43dd-8c87-64d16f956669" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	studentId:payload.studentId,
+	studentName:payload.studentName,
+	subjects:payload.*subjects
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="demo-dynamo-getbatchitem" doc:id="42b50a96-d712-4f6b-9574-0482ef230895" >
+		<http:listener doc:name="Listener" doc:id="4a1903ae-d84c-4840-8218-16629f8eeb39" config-ref="HTTP_Listener_config" path="/v1/dynamo/" allowedMethods="POST"/>
+		<ee:transform doc:name="initial request" doc:id="f4fc2114-fed8-44ad-ad6a-3dc1b0a2f065" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="ids" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.studentId]]></ee:set-variable>
+				<ee:set-variable variableName="code" ><![CDATA[%dw 2.0
+output application/java
+---
+payload.subjectCode]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="dynamo batch get Item" doc:id="886cf808-4876-4583-a33e-e342f5871ae8" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+
+var dynamoDb = Mule::p('dynamo.db')
+
+---
+{
+	"$(dynamoDb)":{
+		"keys" : vars.ids map(item,index) ->
+		{
+			"id" : {"S" : item } as Object {class:"org.mule.extension.dynamodb.api.model.AttributeValue"},
+			"sk" : {"S" : "subject#" ++ vars.code} as Object {class:"org.mule.extension.dynamodb.api.model.AttributeValue"}
+		}
+	} as Object {class:"org.mule.extension.dynamodb.api.model.KeysAndAttributes"} 
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<dynamodb:batch-get-item doc:name="Batch get item" doc:id="5af77dd0-b1bc-45e2-8270-31365fc79b31" config-ref="Amazon_DynamoDB_Configuration" requestItems="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="a87fc250-e317-41f0-834a-882d3b32ffb3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var dynamoDb = p('dynamo.db')
+
+---
+payload.responses.'$(dynamoDb)' map ((item,index)->
+{
+	"id" :item."id".S,
+	"subject": item."subject".S,
+	"branch":item."branch".S
+	
+})]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
