@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dynamodb="http://www.mulesoft.org/schema/mule/dynamodb"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/dynamodb http://www.mulesoft.org/schema/mule/dynamodb/current/mule-dynamodb.xsd">
+	
+<flow name="putItem-dynamoFlow" doc:id="ec83ba40-a0c6-46c1-8ba7-4776b60a343e">
+		<http:listener doc:name="Listener" doc:id="94aa2ed3-f228-4452-b626-f5594981d619" config-ref="HTTP_Listener_config" path="/v1/putItem-dynamo/" allowedMethods="POST" />
+		<ee:transform doc:name="Transform Message" doc:id="3a2c4068-40b6-4188-8f0a-4597e2993fa0">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+  "id": {    "S": payload.studentId  },
+  "sk": {    "S": "student#" ++ payload.studentId  },
+  "name": {    "S": payload.studentName  }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<dynamodb:put-item doc:name="Put item" doc:id="334f1727-e4cb-44b6-99ae-ccaf9bdf69c5" config-ref="Amazon_DynamoDB_Configuration" tableName="${dynamo.db}"/>
+		<ee:transform doc:name="Transform Message" doc:id="67571900-c57e-48de-8712-2f7c2a4863b4">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status:"success"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="batchPutItem-dynamoFlow" doc:id="7736fd3d-3f78-4c0b-a6ca-da5bce78e2ba" >
+		<http:listener doc:name="Listener" doc:id="a8a896cc-0dd6-4b6e-a2dc-ad6c395dcbbc" config-ref="HTTP_Listener_config" path="/v1/put-dynamo/{id}" allowedMethods="POST"/>
+		<ee:transform doc:name="Transform Message" doc:id="31ca0a2c-5631-470b-9444-b4a9e7faa77a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+
+var dynamoDb =p('dynamo.db')
+var studentId = attributes.uriParams."id"
+---
+{
+	"$(dynamoDb)": payload map(item,index) ->{
+		"PutRequest" : {
+  "id": {    "S": studentId  },
+  "sk": {    "S": "subject#" ++ item.subjectId  },
+  "branch": {    "S": item.branch  },
+  "subject": {    "S": item.subject  }
+  }
+	} as Object {class:"org.mule.extension.dynamodb.api.model.WriteRequest"} 
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<dynamodb:batch-put-item doc:name="Batch put item" doc:id="715bf1c6-0e5d-4065-bfda-1670b7632a2e" config-ref="Amazon_DynamoDB_Configuration" requestPutItems="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="42a08826-907e-4028-9cbb-558b76576d91" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status:"success"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="deleteItem-dynamoFlow" doc:id="ed8ecec9-837b-4145-8515-383abaec9e36" >
+		<http:listener doc:name="Listener" doc:id="0c2f427f-559a-4b15-98ad-9e3910e7ed3f" config-ref="HTTP_Listener_config" path="/v1/delete-item/{id}" allowedMethods="DELETE"/>
+		<ee:transform doc:name="Transform Message" doc:id="6e120214-4d4f-44f2-938a-aebf9ed4600c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+
+var studentId = attributes.uriParams."id"
+---
+{
+"id": {    "S": studentId  },
+ "sk": {    "S": "student#" ++  studentId }
+ }]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<dynamodb:delete-item doc:name="Delete item" doc:id="58631e56-5b3c-4bd9-a815-a81e5198e017" config-ref="Amazon_DynamoDB_Configuration" tableName="${dynamo.db}"/>
+		<ee:transform doc:name="Transform Message" doc:id="4ddc1d35-c6e8-49b6-bef2-9ef0d79aaabc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status:"success"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="deleteBatchItem-dynamoFlow" doc:id="a7685d82-5507-451b-ae05-91d320d1eb5d" >
+		<http:listener doc:name="Listener" doc:id="41d54b1c-7329-4a80-90cc-242fc2465dab" config-ref="HTTP_Listener_config" path="/v1/delete-batchitem/{id}" allowedMethods="DELETE" />
+		<ee:transform doc:name="Transform Message" doc:id="a92f0aa4-008b-481b-8f64-9ec6e80ef969" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+
+var dynamoDb =p('dynamo.db')
+var studentId = attributes.uriParams."id"
+---
+{ 
+"$(dynamoDb)" : payload map(item,index) -> {
+"DeleteRequest" : {
+  "id": {    "S": studentId  } as Object {class:"org.mule.extension.dynamodb.api.model.AttributeValue"},
+  "sk": {    "S": item } as Object {class:"org.mule.extension.dynamodb.api.model.AttributeValue"}
+  }
+	} as Object {class: "org.mule.extension.dynamodb.api.model.WriteRequest"}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+			</ee:variables>
+		</ee:transform>
+		<dynamodb:batch-delete-item doc:name="Batch delete item" doc:id="3ff114c7-198e-4dfb-954e-93d5a5651151" config-ref="Amazon_DynamoDB_Configuration" requestDeleteItems="#[payload]"/>
+		<ee:transform doc:name="Transform Message" doc:id="b2f8ca25-3a95-4449-ada7-e53c37f5160a" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status:"success"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	
+</mule>
