@@ -11,20 +11,20 @@ http://www.mulesoft.org/schema/mule/dynamodb http://www.mulesoft.org/schema/mule
 	
 <flow name="putItem-dynamoFlow" doc:id="ec83ba40-a0c6-46c1-8ba7-4776b60a343e">
 		<http:listener doc:name="Listener" doc:id="94aa2ed3-f228-4452-b626-f5594981d619" config-ref="HTTP_Listener_config" path="/v1/putItem-dynamo/" allowedMethods="POST" />
-		<ee:transform doc:name="Transform Message" doc:id="3a2c4068-40b6-4188-8f0a-4597e2993fa0">
+		<ee:transform doc:name="dynamo input" doc:id="3a2c4068-40b6-4188-8f0a-4597e2993fa0">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/java
 ---
 {
-  "id": {    "S": payload.studentId  },
+  "id": {    "S": payload.studentId  },// Attribute type string
   "sk": {    "S": "student#" ++ payload.studentId  },
   "name": {    "S": payload.studentName  }
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>
 		<dynamodb:put-item doc:name="Put item" doc:id="334f1727-e4cb-44b6-99ae-ccaf9bdf69c5" config-ref="Amazon_DynamoDB_Configuration" tableName="${dynamo.db}"/>
-		<ee:transform doc:name="Transform Message" doc:id="67571900-c57e-48de-8712-2f7c2a4863b4">
+		<ee:transform doc:name="success status" doc:id="67571900-c57e-48de-8712-2f7c2a4863b4">
 			<ee:message>
 				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
@@ -36,8 +36,8 @@ output application/json
 		</ee:transform>
 	</flow>
 	<flow name="batchPutItem-dynamoFlow" doc:id="7736fd3d-3f78-4c0b-a6ca-da5bce78e2ba" >
-		<http:listener doc:name="Listener" doc:id="a8a896cc-0dd6-4b6e-a2dc-ad6c395dcbbc" config-ref="HTTP_Listener_config" path="/v1/put-dynamo/{id}" allowedMethods="POST"/>
-		<ee:transform doc:name="Transform Message" doc:id="31ca0a2c-5631-470b-9444-b4a9e7faa77a" >
+		<http:listener doc:name="Listener" doc:id="a8a896cc-0dd6-4b6e-a2dc-ad6c395dcbbc" config-ref="HTTP_Listener_config" path="/v1/batchPut-dynamo/{id}" allowedMethods="POST"/>
+		<ee:transform doc:name="input request" doc:id="31ca0a2c-5631-470b-9444-b4a9e7faa77a" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/java
@@ -58,7 +58,7 @@ var studentId = attributes.uriParams."id"
 			</ee:message>
 		</ee:transform>
 		<dynamodb:batch-put-item doc:name="Batch put item" doc:id="715bf1c6-0e5d-4065-bfda-1670b7632a2e" config-ref="Amazon_DynamoDB_Configuration" requestPutItems="#[payload]"/>
-		<ee:transform doc:name="Transform Message" doc:id="42a08826-907e-4028-9cbb-558b76576d91" >
+		<ee:transform doc:name="success-response" doc:id="42a08826-907e-4028-9cbb-558b76576d91" >
 			<ee:message >
 				<ee:set-payload ><![CDATA[%dw 2.0
 output application/json
@@ -128,6 +128,50 @@ output application/json
 ---
 {
 	status:"success"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="update-dynamoFlow" doc:id="5ff88ff9-7f88-4990-9622-cf7dfb0647f2" >
+		<http:listener doc:name="Listener" doc:id="b5a0e32d-31e1-4ec8-a840-d262b4833dab" config-ref="HTTP_Listener_config" path="/v1/updateItem"/>
+		<ee:transform doc:name="Transform Message" doc:id="4d419e98-9aac-4f76-bd34-1e4db2018da4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+
+---
+{
+	id: {S: payload.id},
+	sk: {S: payload.sk}
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="attributeName" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	"#subject": "subject"
+}]]></ee:set-variable>
+				<ee:set-variable variableName="attributeValue" ><![CDATA[%dw 2.0
+output application/java
+---
+{
+	":subject" : { "S": payload.subject}
+}]]></ee:set-variable>
+				<ee:set-variable variableName="inputReq" ><![CDATA[%dw 2.0
+output application/java
+---
+payload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<dynamodb:update-item doc:name="Update item" doc:id="ca01f893-203d-4fdd-beae-f0e30b77a021" config-ref="Amazon_DynamoDB_Configuration" tableName="${dynamo.db}" updateExpression='#["SET #subject=:subject"]' attributeNames='#["#subject": "subject"]' attributeValues='#[":subject" : { "S": vars.inputReq.subject}]'/>
+		<ee:transform doc:name="Transform Message" doc:id="227d46a2-332e-4341-b7a9-c6bb91aedba3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status:success
 }]]></ee:set-payload>
 			</ee:message>
 		</ee:transform>

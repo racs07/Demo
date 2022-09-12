@@ -89,4 +89,5 @@ payload.responses.'$(dynamoDb)' map ((item,index)->
 			</ee:message>
 		</ee:transform>
 	</flow>
+	
 </mule>
